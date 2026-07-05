@@ -3,20 +3,114 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tangerine</title>
+    <title>Interval</title>
     <link rel="stylesheet" href="https://latex.vercel.app/style.css" />
   </head>
 
   <body class="latex-dark-auto text-justify">
-    <h1>Interval<h1>
+    <h1>Interval</h1>
     <p class="author">Arvind Venkatesh</p>
 
     <div class="abstract">
       <h2>Abstract</h2>
-      <p>Find the connections between any 2 musical artists, producers, audio engineers, etc. Made with the MusicBrainz API</p>
+      <p>
+        Find the connections between any 2 musical artists, producers, audio
+        engineers, etc. Made with the MusicBrainz API.
+      </p>
+    </div>
+    <div style="margin: 10px">
+      <label for="artist1">1<sup>st</sup> Artist</label>
+      <input id="artist1" value="Miles Davis" />
+      <label for="artist2">2<sup>nd</sup> Artist</label>
+      <input id="artist2" value="Taylor Swift" />
+    </div>
+    <div style="display: flex; align-items: center; justify-content: center">
+      <button id="go">Go</button>
     </div>
 
+    <div id="output"></div>
+
     <script>
+      let output = document.getElementById("output");
+      const wait = (t) => new Promise((resolve) => setTimeout(resolve, t));
+
+      document.getElementById("go").addEventListener("click", async () => {
+        output.innerHTML = "Loading MusicBrainz API...";
+
+        const { MusicBrainzApi } =
+          await import("https://cdn.jsdelivr.net/npm/musicbrainz-api@1.2.1/+esm");
+        const mbApi = new MusicBrainzApi({
+          appName: "Interval",
+          appVersion: "1.0.0",
+          appContactInfo: "Arvind Venkatesh <contact@rvind.cc>",
+          rateLimit: [10, 11],
+        });
+
+        let start = document.getElementById("artist1").value;
+        let end = document.getElementById("artist2").value;
+
+        const start_artist = await mbApi.search("artist", { query: start });
+        const start_id = start_artist.artists[0]["id"];
+        await wait(1000);
+        const end_artist = await mbApi.search("artist", { query: end });
+        const end_id = end_artist.artists[0]["id"];
+
+        let queue = [[start_id, [start]]]; // [visitedArtist, visitedFrom]
+        let visited = [start_id];
+
+        let found = false;
+
+        output.innerHTML += "<p>Currently evaluating <span id='curr'></span>";
+        let eval = document.getElementById("curr");
+
+        while (queue[0]) {
+          let curr = queue.shift();
+          let id = curr[0];
+          let path = curr[1];
+
+          let relationships = [];
+
+          eval.innerHTML = `<em>${path.join(" &rarr; ")}</em>`;
+
+          try {
+            await wait(1000);
+            let lookup = await mbApi.lookup("artist", id, ["artist-rels"]);
+            relationships = lookup["relations"].map((x) => {
+              return {
+                ...x["artist"],
+                relType: x["type"],
+              };
+            });
+          } catch {
+            continue;
+          }
+
+          for (let rel of relationships) {
+            let rid = rel["id"];
+            let rname = `${rel["name"]} (${rel["relType"]})`;
+            if (end_id == rid) {
+              found = rname;
+              break;
+            }
+            if (!visited.includes(rid)) {
+              queue.push([rid, [...path, rname]]);
+              visited.push(rid);
+              continue;
+            }
+          }
+
+          if (found) {
+            eval.parentElement.style.display = "none";
+            output.innerHTML += `<br>Found: <em>${path.join(" &rarr; ")} &rarr; ${found}</em>`;
+            break;
+          }
+        }
+
+        if (!found) {
+          eval.parentElement.style.display = "none";
+          output.innerHTML += `<br>Unable to find path betweeen artists!`;
+        }
+      });
     </script>
   </body>
 </html>
